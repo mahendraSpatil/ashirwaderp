@@ -16,15 +16,13 @@ import {
   CheckCircle2,
   Clock,
   FlaskConical,
-  ArrowRight,
   AlertCircle,
   CreditCard,
   Zap,
   ShoppingCart,
 } from 'lucide-react';
-import type { Prescription, PrescriptionStatus, InventoryItem, AuditCategory } from '@/types';
-import { forecastData } from '@/services/mockDb'; // Removed initialInventory
-import { api } from '@/services/api'; // Imported your bridge!
+import type { Prescription, PrescriptionStatus, AuditCategory } from '@/types';
+import { api } from '@/services/api'; 
 
 interface PharmacyDashboardProps {
   prescriptions: Prescription[];
@@ -45,68 +43,118 @@ export default function PharmacyDashboard({
 }: PharmacyDashboardProps) {
   const [activeStep, setActiveStep] = useState<PrescriptionStatus>('Pending');
   
-  // Start with an empty array and add a loading state
+  const [livePrescriptions, setLivePrescriptions] = useState<Prescription[]>([]);
   const [inventory, setInventory] = useState<any[]>([]);
+  const [forecasts, setForecasts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [preorderToast, setPreorderToast] = useState<string | null>(null);
 
-  const filteredRx = prescriptions.filter((rx) => rx.status === activeStep);
+  // Merge prop prescriptions with live backend prescriptions
+  const allPrescriptions = [
+    ...prescriptions,
+    ...livePrescriptions.filter((lr) => !prescriptions.some((p) => (p.id === lr.id || (p as any)._id === lr.id)))
+  ];
 
-  // Fetch live data from MongoDB
-  const fetchLiveInventory = async () => {
+  const filteredRx = allPrescriptions.filter((rx) => rx.status === activeStep);
+
+  const fetchLiveData = async () => {
     try {
-      const data = await api.getInventory();
+      const [inventoryData, rxData, forecastData] = await Promise.all([
+        api.getInventory().catch(() => []),
+        api.getPrescriptions().catch(() => []),
+        api.getForecasts().catch(() => []),
+      ]);
       
-      // Map Mongoose data to match your UI's expected format
-      const formattedData = data.map((batch: any) => ({
-        id: batch._id,
+      const formattedData = (inventoryData || []).map((batch: any) => ({
+        id: batch._id || batch.id,
         name: batch.medicine?.medicineName || batch.medicineName || 'Unknown Medicine',
         category: batch.medicine?.category || 'General',
-        batchId: batch._id.substring(0, 8).toUpperCase(), // Generate short ID if needed
+        batchId: (batch._id || batch.id || 'BATCH').substring(0, 8).toUpperCase(),
         expiryDate: batch.expiryDate || new Date().toISOString(),
-        stock: batch.quantity,
-        unit: 'Tabs', // Defaulting to Tabs, update if your DB stores units
-        reorderLevel: 50 // Defaulting reorder level, update if your DB stores this
+        stock: batch.quantity || 0,
+        unit: 'Tabs',
+        reorderLevel: 50
       }));
       
       setInventory(formattedData);
+
+      const formattedRx: Prescription[] = (rxData || []).map((rx: any) => ({
+        id: rx._id || rx.id,
+        patientId: rx.patientId,
+        patientName: rx.patientName,
+        upid: rx.upid,
+        medicineName: rx.medicineName,
+        dosage: rx.dosage,
+        instructions: rx.instructions || 'As directed by physician',
+        status: rx.status || 'Pending',
+        prescribedBy: typeof rx.prescribedBy === 'object' ? rx.prescribedBy?.fullName || 'Dr. Ananya Iyer' : rx.prescribedBy || 'Dr. Ananya Iyer',
+        timestamp: rx.createdAt || rx.timestamp || new Date().toISOString(),
+      }));
+      setLivePrescriptions(formattedRx);
+
+      // Setup forecast chart data
+      if (forecastData && forecastData.length > 0 && forecastData[0].supplement) {
+        setForecasts(forecastData);
+      } else {
+        // Fallback default demand forecasts for standard maternity supplements
+        setForecasts([
+          { supplement: 'Folic Acid', predictedDemand: 280, currentStock: 150 },
+          { supplement: 'Iron Tabs', predictedDemand: 310, currentStock: 350 },
+          { supplement: 'Calcium + D3', predictedDemand: 190, currentStock: 220 },
+          { supplement: 'Labetalol', predictedDemand: 120, currentStock: 80 },
+        ]);
+      }
     } catch (error) {
-      console.error("Error fetching live inventory:", error);
+      console.error("Error fetching live data:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  // Run the fetch function when the dashboard first opens
   useEffect(() => {
-    fetchLiveInventory();
+    fetchLiveData();
+    const interval = setInterval(fetchLiveData, 4000);
+    return () => clearInterval(interval);
   }, []);
 
-  // Make handleAdvance async so we can wait for the DB to update
   const handleAdvance = async (rx: Prescription) => {
+    const rxId = (rx as any)._id || rx.id;
     const isDispensing = rx.status === 'Approved_Pending_Payment';
+    const nextStatus: PrescriptionStatus =
+      rx.status === 'Pending'
+        ? 'Approved_Pending_Payment'
+        : 'Paid_And_Dispensed';
+
+    // Optimistically update local and parent state
     onAdvanceRx(rx.id);
+    setLivePrescriptions((prev) =>
+      prev.map((r) => (r.id === rxId || (r as any)._id === rxId ? { ...r, status: nextStatus } : r))
+    );
+
+    try {
+      await api.advancePrescription(rxId, 'Karthik Rao');
+    } catch (err) {
+      console.error("Failed to advance prescription in database:", err);
+    }
 
     if (isDispensing) {
       try {
-        // Tell the backend to deduct 30 units (based on your original logic)
         await api.deductInventory(rx.medicineName, 30);
-        
-        // Refresh the table to show the new live stock!
-        await fetchLiveInventory();
+        await fetchLiveData();
       } catch (error) {
         console.error("Failed to deduct stock in database:", error);
       }
     }
 
-    const nextStatus =
+    const auditStatusLabel =
       rx.status === 'Pending'
         ? 'Approved — Waiting for Payment'
         : rx.status === 'Approved_Pending_Payment'
         ? 'Paid & Dispensed'
         : 'Dispensed';
+
     onAuditLog(
-      `E-Rx ${nextStatus} — ${rx.medicineName} for ${rx.patientName}`,
+      `E-Rx ${auditStatusLabel} — ${rx.medicineName} for ${rx.patientName}`,
       'Karthik Rao',
       isDispensing ? 'payment' : 'prescription'
     );
@@ -127,7 +175,6 @@ export default function PharmacyDashboard({
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-      {/* 3-Step Dispensing Lock UI */}
       <div className="card p-6">
         <div className="flex items-center gap-3 mb-5">
           <div className="w-10 h-10 rounded-xl bg-terracotta-50 flex items-center justify-center">
@@ -139,7 +186,6 @@ export default function PharmacyDashboard({
           </div>
         </div>
 
-        {/* Progress steps */}
         <div className="flex items-center justify-between max-w-2xl mx-auto mb-2">
           {statusSteps.map((step, idx) => {
             const isActive = step.status === activeStep;
@@ -191,7 +237,6 @@ export default function PharmacyDashboard({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* E-Rx Queue */}
         <div className="card p-6">
           <div className="flex items-center gap-2 mb-5">
             <Pill className="w-5 h-5 text-terracotta-500" strokeWidth={1.5} />
@@ -259,7 +304,6 @@ export default function PharmacyDashboard({
           )}
         </div>
 
-        {/* AI Forecast */}
         <div className="card p-6">
           <div className="flex items-center gap-2 mb-5">
             <div className="w-8 h-8 rounded-lg bg-terracotta-50 flex items-center justify-center">
@@ -271,7 +315,7 @@ export default function PharmacyDashboard({
             </div>
           </div>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={forecastData} margin={{ top: 10, right: 0, left: -18, bottom: 0 }}>
+            <BarChart data={forecasts} margin={{ top: 10, right: 0, left: -18, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#EAE6DF" vertical={false} />
               <XAxis
                 dataKey="supplement"
@@ -291,7 +335,7 @@ export default function PharmacyDashboard({
                 cursor={{ fill: 'rgba(158,91,67,0.05)' }}
               />
               <Bar dataKey="predictedDemand" radius={[6, 6, 0, 0]} name="Predicted Demand">
-                {forecastData.map((entry, idx) => (
+                {forecasts.map((entry, idx) => (
                   <Cell
                     key={idx}
                     fill={entry.predictedDemand > entry.currentStock ? '#C77A58' : '#9E5B43'}
@@ -309,11 +353,10 @@ export default function PharmacyDashboard({
             </span>
           </div>
 
-          {/* Auto-preorder for critical items */}
           <div className="mt-4 pt-4 border-t border-beige-200">
             <p className="label-text mb-3">Critical Items — Auto-Preorder</p>
             <div className="flex flex-wrap gap-2">
-              {forecastData
+              {forecasts
                 .filter((f) => f.predictedDemand > f.currentStock)
                 .map((f) => (
                   <button
@@ -337,7 +380,6 @@ export default function PharmacyDashboard({
         </div>
       </div>
 
-      {/* Inventory Table */}
       <div className="card p-6">
         <div className="flex items-center gap-2 mb-5">
           <Package className="w-5 h-5 text-terracotta-500" strokeWidth={1.5} />

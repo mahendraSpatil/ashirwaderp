@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import type { Prescription, AuditEntry, AuditCategory } from '@/types';
-import { prescriptions as initialPrescriptions, auditLog as initialAuditLog, generateHash } from '@/services/mockDb';
+import { generateHash } from '@/services/utils';
 import { useAuth } from '@/services/AuthContext';
 import AuthScreen from '@/components/AuthScreen';
 import Header from '@/components/Header';
@@ -11,9 +11,9 @@ import AdminDashboard from '@/components/dashboards/AdminDashboard';
 
 export default function App() {
   const { user, loading, signOut } = useAuth();
-  const [prescriptions, setPrescriptions] = useState<Prescription[]>(initialPrescriptions);
-  const [auditLog, setAuditLog] = useState<AuditEntry[]>(initialAuditLog);
-
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
+  const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
+  
   const addAuditEntry = useCallback(
     (action: string, actor: string, category: AuditCategory): string => {
       const hash = generateHash();

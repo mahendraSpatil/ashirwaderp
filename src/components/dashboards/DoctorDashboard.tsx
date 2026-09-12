@@ -43,31 +43,41 @@ export default function DoctorDashboard({ onPrescriptionSent }: DoctorDashboardP
   const [dosage, setDosage] = useState('');
   const [sentToast, setSentToast] = useState(false);
 
-  // Fetch live patients on mount
-  useEffect(() => {
-    const fetchPatients = async () => {
-      try {
-        const livePatients = await api.getPatients();
-        // Standardize IDs coming from MongoDB (_id to id)
-        const formattedPatients = livePatients.map(p => ({
-            ...p,
-            id: p._id || p.id
-        }));
+  // Fetch live patients
+  const fetchPatients = async (silent = false) => {
+    try {
+      if (!silent) setLoading(true);
+      const livePatients = await api.getPatients();
+      const formattedPatients = livePatients.map((p: any) => ({
+        ...p,
+        id: p._id || p.id,
+      }));
 
-        setPatientList(formattedPatients);
-        
-        if (formattedPatients.length > 0) {
-          setActivePatientId(formattedPatients[0].id);
-          setNotes(formattedPatients[0].notes || '');
+      setPatientList(formattedPatients);
+      
+      setActivePatientId((prev) => {
+        if (prev && formattedPatients.some((p: any) => p.id === prev)) {
+          return prev;
         }
-      } catch (error) {
-        console.error("Error fetching patients:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
+        return formattedPatients.length > 0 ? formattedPatients[0].id : '';
+      });
 
+      if (formattedPatients.length > 0 && !activePatientId) {
+        setNotes(formattedPatients[0].notes || '');
+      }
+    } catch (error) {
+      console.error("Error fetching patients:", error);
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchPatients();
+    const interval = setInterval(() => {
+      fetchPatients(true);
+    }, 3000);
+    return () => clearInterval(interval);
   }, []);
 
   const activePatient = patientList.find((p) => p.id === activePatientId);
@@ -78,40 +88,49 @@ export default function DoctorDashboard({ onPrescriptionSent }: DoctorDashboardP
     if (p) setNotes(p.notes || '');
   };
 
-  const handleSaveNotes = () => {
+  const handleSaveNotes = async () => {
     setPatientList((prev) =>
       prev.map((p) => (p.id === activePatientId ? { ...p, notes } : p))
     );
-    // Future step: Add api.updatePatientNotes(activePatientId, notes) here!
+    
+    try {
+      await api.updatePatient(activePatientId, { notes });
+      alert("Notes saved securely to patient file!"); 
+    } catch (error) {
+      console.error("Failed to save notes:", error);
+      alert("Failed to save notes. Please check your connection.");
+    }
   };
 
   const handleSendToPharmacy = async () => {
     if (!medName.trim() || !dosage.trim() || !activePatient) return;
     
     const rxData = {
-      patientId: activePatient.id,
+      patientId: activePatient.id || activePatient._id,
       patientName: activePatient.name,
       upid: activePatient.upid,
       medicineName: medName,
       dosage,
       instructions: 'As directed by physician',
-      status: 'Pending',
+      status: 'Pending' as const,
       prescribedBy: 'Dr. Ananya Iyer',
+      timestamp: new Date().toISOString(),
     };
 
     try {
-      // Send the prescription across the bridge to MongoDB
-      await api.createPrescription(rxData);
-      
-      // Update parent component UI if needed
-      onPrescriptionSent(rxData as Prescription);
+      const createdRx = await api.createPrescription(rxData);
+      onPrescriptionSent((createdRx as Prescription) || (rxData as Prescription));
       
       setMedName('');
       setDosage('');
       setSentToast(true);
-      setTimeout(() => setSentToast(false), 2500);
+      setTimeout(() => setSentToast(false), 3000);
     } catch (error) {
-       console.error("Failed to send prescription:", error);
+      console.error("Failed to send prescription:", error);
+      // Still trigger local state as fallback
+      onPrescriptionSent(rxData as Prescription);
+      setSentToast(true);
+      setTimeout(() => setSentToast(false), 3000);
     }
   };
 

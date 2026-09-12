@@ -2,7 +2,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
-
+import financeRoutes from './routes/finance.js';
 import authRoutes from './routes/auth.js';
 import prescriptionRoutes from './routes/prescriptions.js';
 import inventoryRoutes from './routes/inventory.js';
@@ -25,7 +25,7 @@ app.use('/api/prescriptions', prescriptionRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/patients', patientRoutes);
 app.use('/api/audit', auditRoutes);
-
+app.use('/api/finance', financeRoutes);
 // Health check
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

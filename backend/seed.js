@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import { Revenue, Forecast } from './models/Finance.js';
 dotenv.config();
 
 import { User } from './models/User.js';
@@ -68,7 +69,6 @@ async function seed() {
   // --- SEED INVENTORY ---
   console.log('\nClearing old inventory and seeding new custom list...');
   
-  // These two lines wipe the current inventory clean
   await Medicine.deleteMany({});
   await Batch.deleteMany({});
 
@@ -80,7 +80,6 @@ async function seed() {
       medicine = await Medicine.create(med);
       console.log(`  +  Created Medicine Profile: ${med.medicineName}`);
 
-      // Create a batch with 150 units in stock and a required unique batchId
       await Batch.create({
         medicine: medicine._id,
         batchId: `BATCH-${Date.now().toString().slice(-4)}-${Math.floor(Math.random() * 1000)}`,
@@ -93,7 +92,35 @@ async function seed() {
     }
   }
 
-  console.log('\nDone. All demo users and inventory ready!');
+  // --- SEED FINANCE & FORECAST DATA ---
+  console.log('\nSeeding Dashboard Chart Data...');
+  await Revenue.deleteMany({});
+  await Forecast.deleteMany({});
+
+  const sampleRevenue = [
+    { day: 'Mon', clinicRevenue: 12500, pharmacyRevenue: 8400 },
+    { day: 'Tue', clinicRevenue: 15200, pharmacyRevenue: 9100 },
+    { day: 'Wed', clinicRevenue: 14800, pharmacyRevenue: 11200 },
+    { day: 'Thu', clinicRevenue: 18500, pharmacyRevenue: 10500 },
+    { day: 'Fri', clinicRevenue: 16900, pharmacyRevenue: 13400 },
+    { day: 'Sat', clinicRevenue: 22400, pharmacyRevenue: 16800 },
+    { day: 'Sun', clinicRevenue: 19800, pharmacyRevenue: 14200 },
+  ];
+
+  const sampleForecast = [
+    { week: 'W1', currentStock: 850, forecastedDemand: 820 },
+    { week: 'W2', currentStock: 780, forecastedDemand: 850 },
+    { week: 'W3', currentStock: 720, forecastedDemand: 890 },
+    { week: 'W4', currentStock: 950, forecastedDemand: 910 },
+    { week: 'W5', currentStock: 890, forecastedDemand: 940 },
+    { week: 'W6', currentStock: 820, forecastedDemand: 980 },
+  ];
+
+  await Revenue.insertMany(sampleRevenue);
+  await Forecast.insertMany(sampleForecast);
+  console.log('  + Added Revenue and Forecast data for Admin charts');
+
+  console.log('\nDone. All demo users, inventory, and charts ready!');
   await mongoose.disconnect();
   process.exit(0);
 }

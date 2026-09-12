@@ -4,7 +4,7 @@ const PrescriptionStatusEnum = ['Pending', 'Approved_Pending_Payment', 'Paid_And
 
 const prescriptionSchema = new mongoose.Schema(
   {
-    patientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Patient', required: true },
+    patientId: { type: mongoose.Schema.Types.Mixed, required: true },
     patientName: { type: String, required: true },
     upid: { type: String, required: true },
     medicineName: { type: String, required: true },
@@ -16,8 +16,8 @@ const prescriptionSchema = new mongoose.Schema(
       default: 'Pending',
       required: true,
     },
-    prescribedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    dispensedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    prescribedBy: { type: mongoose.Schema.Types.Mixed, default: 'Dr. Ananya Iyer' },
+    dispensedBy: { type: mongoose.Schema.Types.Mixed },
     blockHash: { type: String, default: '' },
   },
   { timestamps: true }
@@ -26,3 +26,4 @@ const prescriptionSchema = new mongoose.Schema(
 prescriptionSchema.index({ patientId: 1, status: 1 });
 
 export const Prescription = mongoose.model('Prescription', prescriptionSchema);
+

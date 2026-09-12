@@ -19,10 +19,12 @@ import {
   Stethoscope,
   ChevronRight,
   Phone,
+  UserPlus,
+  Plus,
 } from 'lucide-react';
 import type { AuditCategory } from '@/types';
-import { generateHash } from '@/services/mockDb';
-import { api } from '@/services/api'; // Imported the bridge!
+import { generateHash } from '@/services/utils';
+import { api } from '@/services/api';
 
 interface UploadedFile {
   name: string;
@@ -81,6 +83,23 @@ export default function NurseDashboard({ onAuditLog }: NurseDashboardProps) {
   const [loading, setLoading] = useState(true);
   const [selectedPatientId, setSelectedPatientId] = useState<string>('');
 
+  // Add Patient Modal States
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [submittingPatient, setSubmittingPatient] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newAge, setNewAge] = useState('');
+  const [newWeeks, setNewWeeks] = useState('');
+  const [newGravida, setNewGravida] = useState('1');
+  const [newPara, setNewPara] = useState('0');
+  const [newBloodGroup, setNewBloodGroup] = useState('O+');
+  const [newEdd, setNewEdd] = useState('');
+  const [newComplaint, setNewComplaint] = useState('');
+  const [newRiskLevel, setNewRiskLevel] = useState<'Low' | 'Medium' | 'High'>('Low');
+  const [newBpSys, setNewBpSys] = useState('');
+  const [newBpDia, setNewBpDia] = useState('');
+  const [newWeight, setNewWeight] = useState('');
+  const [newFhr, setNewFhr] = useState('');
+
   // Form States
   const [bpSys, setBpSys] = useState('');
   const [bpDia, setBpDia] = useState('');
@@ -96,7 +115,7 @@ export default function NurseDashboard({ onAuditLog }: NurseDashboardProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 1. Fetch live patients on mount
-  const fetchPatients = async () => {
+  const fetchPatients = async (preserveSelection = true) => {
     try {
       const data = await api.getPatients();
       
@@ -112,17 +131,23 @@ export default function NurseDashboard({ onAuditLog }: NurseDashboardProps) {
           weeks: `${p.gestationalAgeWeeks || 0}w`,
           bp: p.bp || '--/--',
           fhr: p.fetalHeartRate ? p.fetalHeartRate.toString() : '--',
-          complaint: p.notes || 'Routine check-up', // Fallback if no complaint logged
-          waitMinutes: p.waitMinutes || Math.floor(Math.random() * 30), // Simulate wait time if missing
+          complaint: p.notes || 'Routine check-up',
+          waitMinutes: p.waitMinutes || 5,
           priority: isHighRisk ? 'Emergency' : isMedRisk ? 'High Priority' : 'Routine',
           escalationReason: isHighRisk ? 'Clinically flagged as high risk' : undefined,
-          status: p.status || 'waiting'
+          status: p.status || 'waiting',
+          documents: p.documents || [],
         };
       });
 
       setQueue(formattedData);
       if (formattedData.length > 0) {
-        setSelectedPatientId(formattedData[0].id);
+        setSelectedPatientId((prev) => {
+          if (preserveSelection && prev && formattedData.some((p) => p.id === prev)) {
+            return prev;
+          }
+          return formattedData[0].id;
+        });
       }
     } catch (error) {
       console.error("Error fetching patient queue:", error);
@@ -137,12 +162,10 @@ export default function NurseDashboard({ onAuditLog }: NurseDashboardProps) {
 
   const handleCallIn = async (id: string) => {
     try {
-      // Optimistically update UI
       setQueue((prev) =>
         prev.map((p) => (p.id === id ? { ...p, status: 'in_consultation' } : p))
       );
       
-      // Tell backend to update status
       await api.updatePatient(id, { status: 'in_consultation' });
 
       const patient = queue.find((p) => p.id === id);
@@ -155,12 +178,13 @@ export default function NurseDashboard({ onAuditLog }: NurseDashboardProps) {
       }
     } catch (error) {
       console.error("Failed to update status:", error);
-      fetchPatients(); // Revert on failure
+      fetchPatients();
     }
   };
 
   const handleTriageSubmit = async () => {
-    if (!bpSys || !bpDia || !weight || !selectedPatientId) return;
+    const targetPatientId = selectedPatientId || (queue.length > 0 ? queue[0].id : '');
+    if (!bpSys || !bpDia || !weight || !targetPatientId) return;
     
     const sys = parseInt(bpSys);
     const dia = parseInt(bpDia);
@@ -169,10 +193,10 @@ export default function NurseDashboard({ onAuditLog }: NurseDashboardProps) {
 
     try {
       // Send vitals to MongoDB
-      await api.updatePatient(selectedPatientId, {
+      await api.updatePatient(targetPatientId, {
         bp: `${bpSys}/${bpDia}`,
         weight: weight,
-        fetalHeartRate: fhr || null,
+        fetalHeartRate: fhr || '--',
         riskLevel: finalRisk
       });
 
@@ -184,7 +208,7 @@ export default function NurseDashboard({ onAuditLog }: NurseDashboardProps) {
       );
       
       setTriageToast(true);
-      setTimeout(() => setTriageToast(false), 2500);
+      setTimeout(() => setTriageToast(false), 3000);
       
       // Clear form and refresh list to show new vitals in queue
       setBpSys('');
@@ -193,33 +217,57 @@ export default function NurseDashboard({ onAuditLog }: NurseDashboardProps) {
       setFhr('');
       setRiskFlag('Low');
       
-      fetchPatients();
+      await fetchPatients(true);
 
     } catch (error) {
       console.error("Failed to submit triage:", error);
+      alert("Failed to save triage data. Please try again.");
     }
   };
 
   const handleFileUpload = (files: FileList | null) => {
     if (!files || files.length === 0) return;
+    const targetPatientId = selectedPatientId || (queue.length > 0 ? queue[0].id : '');
     setHashing(true);
-    setTimeout(() => {
+
+    setTimeout(async () => {
       const newFiles: UploadedFile[] = Array.from(files).map((file) => ({
         name: file.name,
         size: file.size,
         hash: generateHash(),
         timestamp: new Date().toISOString(),
       }));
+
       setUploadedFiles((prev) => [...newFiles, ...prev]);
-      newFiles.forEach((f) => {
+
+      for (const f of newFiles) {
         onAuditLog(
           `PCPNDT document uploaded — ${f.name} (Merkle root: ${f.hash.slice(0, 18)}…)`,
           'Nurse Priya Menon',
           'imaging'
         );
-      });
+
+        if (targetPatientId) {
+          try {
+            await api.uploadPatientDocument(targetPatientId, {
+              name: f.name,
+              type: 'PCPNDT Record',
+              hash: f.hash,
+              verified: true,
+              pcpndtCompliant: true,
+              uploadedBy: 'Nurse Priya Menon',
+            });
+          } catch (err) {
+            console.error("Failed to persist document to patient in database:", err);
+          }
+        }
+      }
+
       setHashing(false);
-    }, 2200);
+      if (targetPatientId) {
+        fetchPatients(true);
+      }
+    }, 1500);
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -237,6 +285,64 @@ export default function NurseDashboard({ onAuditLog }: NurseDashboardProps) {
     { value: 'Medium', label: 'Medium' },
     { value: 'High', label: 'High' },
   ];
+
+  const handleCreatePatient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newName.trim() || !newAge) return;
+    setSubmittingPatient(true);
+
+    try {
+      const initialBp = newBpSys && newBpDia ? `${newBpSys}/${newBpDia}` : '--/--';
+      const payload = {
+        name: newName.trim(),
+        age: parseInt(newAge) || 25,
+        gestationalAgeWeeks: parseInt(newWeeks) || 12,
+        gravida: parseInt(newGravida) || 1,
+        para: parseInt(newPara) || 0,
+        bloodGroup: newBloodGroup,
+        edd: newEdd ? new Date(newEdd) : undefined,
+        notes: newComplaint.trim(),
+        riskLevel: newRiskLevel,
+        bp: initialBp,
+        weight: newWeight || '--',
+        fetalHeartRate: newFhr || '--',
+        status: 'waiting',
+      };
+
+      const created = await api.createPatient(payload);
+      onAuditLog(
+        `New patient registered — ${created.name} (${created.upid})`,
+        'Nurse Priya Menon',
+        'triage'
+      );
+
+      setShowAddModal(false);
+      // Reset form
+      setNewName('');
+      setNewAge('');
+      setNewWeeks('');
+      setNewGravida('1');
+      setNewPara('0');
+      setNewBloodGroup('O+');
+      setNewEdd('');
+      setNewComplaint('');
+      setNewRiskLevel('Low');
+      setNewBpSys('');
+      setNewBpDia('');
+      setNewWeight('');
+      setNewFhr('');
+
+      await fetchPatients(false);
+      if (created._id || created.id) {
+        setSelectedPatientId(created._id || created.id);
+      }
+    } catch (err) {
+      console.error("Failed to create patient:", err);
+      alert("Failed to register patient. Please check your connection.");
+    } finally {
+      setSubmittingPatient(false);
+    }
+  };
 
   const waiting = queue.filter((p) => p.status === 'waiting').length;
   const inConsultation = queue.filter((p) => p.status === 'in_consultation').length;
@@ -270,8 +376,15 @@ export default function NurseDashboard({ onAuditLog }: NurseDashboardProps) {
             </div>
           </div>
 
-          {/* Stats */}
+          {/* Stats & Add Patient Action */}
           <div className="flex items-center gap-3 flex-wrap">
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="btn-terracotta px-4 py-2 text-sm flex items-center gap-2 shadow-soft hover:shadow-md transition-all cursor-pointer"
+            >
+              <UserPlus className="w-4 h-4" />
+              Add New Patient
+            </button>
             <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-beige-50 border border-beige-200">
               <Clock className="w-4 h-4 text-ink-400" strokeWidth={1.5} />
               <span className="text-sm font-medium text-ink-700">{waiting} waiting</span>
@@ -599,6 +712,216 @@ export default function NurseDashboard({ onAuditLog }: NurseDashboardProps) {
           )}
         </div>
       </div>
+
+      {/* Register New Patient Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/40 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-beige-200 p-6 sm:p-8">
+            <div className="flex items-center justify-between pb-4 mb-6 border-b border-beige-200">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-terracotta-50 flex items-center justify-center">
+                  <UserPlus className="w-5 h-5 text-terracotta-500" />
+                </div>
+                <div>
+                  <h3 className="font-serif text-2xl text-ink-900">Register New Patient</h3>
+                  <p className="text-xs text-ink-500">Add maternal record to database and smart triage queue</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="w-8 h-8 rounded-full bg-beige-100 hover:bg-beige-200 text-ink-500 flex items-center justify-center transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreatePatient} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="sm:col-span-2">
+                  <label className="label-text block mb-1">Patient Full Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="e.g. Sunita Rao"
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <label className="label-text block mb-1">Age *</label>
+                  <input
+                    type="number"
+                    required
+                    min={15}
+                    max={60}
+                    value={newAge}
+                    onChange={(e) => setNewAge(e.target.value)}
+                    placeholder="26"
+                    className="input-field"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div>
+                  <label className="label-text block mb-1">Weeks</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={42}
+                    value={newWeeks}
+                    onChange={(e) => setNewWeeks(e.target.value)}
+                    placeholder="16"
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <label className="label-text block mb-1">Gravida (G)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={newGravida}
+                    onChange={(e) => setNewGravida(e.target.value)}
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <label className="label-text block mb-1">Para (P)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={newPara}
+                    onChange={(e) => setNewPara(e.target.value)}
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <label className="label-text block mb-1">Blood Group</label>
+                  <select
+                    value={newBloodGroup}
+                    onChange={(e) => setNewBloodGroup(e.target.value)}
+                    className="input-field bg-white"
+                  >
+                    {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((bg) => (
+                      <option key={bg} value={bg}>{bg}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="label-text block mb-1">Estimated Due Date (EDD)</label>
+                  <input
+                    type="date"
+                    value={newEdd}
+                    onChange={(e) => setNewEdd(e.target.value)}
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <label className="label-text block mb-1">Initial Risk Level</label>
+                  <select
+                    value={newRiskLevel}
+                    onChange={(e) => setNewRiskLevel(e.target.value as any)}
+                    className="input-field bg-white"
+                  >
+                    <option value="Low">Low Risk</option>
+                    <option value="Medium">Medium Risk</option>
+                    <option value="High">High Risk (Escalate)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="label-text block mb-1">Chief Complaint / Initial Notes</label>
+                <input
+                  type="text"
+                  value={newComplaint}
+                  onChange={(e) => setNewComplaint(e.target.value)}
+                  placeholder="e.g. Routine 2nd trimester check-up, mild fatigue"
+                  className="input-field"
+                />
+              </div>
+
+              <div className="pt-2 border-t border-beige-200">
+                <p className="label-text mb-3">Optional Initial Vitals (Can also be triaged later)</p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label className="text-xs text-ink-500 block mb-1">BP Sys</label>
+                    <input
+                      type="number"
+                      value={newBpSys}
+                      onChange={(e) => setNewBpSys(e.target.value)}
+                      placeholder="120"
+                      className="input-field text-sm py-1.5"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-ink-500 block mb-1">BP Dia</label>
+                    <input
+                      type="number"
+                      value={newBpDia}
+                      onChange={(e) => setNewBpDia(e.target.value)}
+                      placeholder="80"
+                      className="input-field text-sm py-1.5"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-ink-500 block mb-1">Weight (kg)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={newWeight}
+                      onChange={(e) => setNewWeight(e.target.value)}
+                      placeholder="62.5"
+                      className="input-field text-sm py-1.5"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-ink-500 block mb-1">FHR (bpm)</label>
+                    <input
+                      type="number"
+                      value={newFhr}
+                      onChange={(e) => setNewFhr(e.target.value)}
+                      placeholder="145"
+                      className="input-field text-sm py-1.5"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-beige-200 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="px-4 py-2 text-sm text-ink-500 hover:text-ink-700 font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingPatient || !newName.trim() || !newAge}
+                  className="btn-terracotta px-6 py-2.5 text-sm flex items-center gap-2 disabled:opacity-50"
+                >
+                  {submittingPatient ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Registering…
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4" />
+                      Register Patient
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

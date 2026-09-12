@@ -28,8 +28,7 @@ import {
   CircleDot,
 } from 'lucide-react';
 import type { AuditEntry, AuditCategory } from '@/types';
-import { revenueData, forecastTrendData } from '@/services/mockDb'; // triageQueue removed
-import { api } from '@/services/api'; // Imported the bridge!
+import { api } from '@/services/api'; // The bridge! (Mock data imports removed completely)
 
 interface AdminDashboardProps {
   auditLog: AuditEntry[];
@@ -79,18 +78,25 @@ const categoryColor: Record<AuditCategory, string> = {
 };
 
 export default function AdminDashboard({ auditLog }: AdminDashboardProps) {
-  // Added state for the live queue
+  // Live Database States
   const [liveQueue, setLiveQueue] = useState<any[]>([]);
+  const [revenue, setRevenue] = useState<any[]>([]);
+  const [forecast, setForecast] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Fetch patients on mount to populate the Smart Triage Queue
+  // Fetch all dashboard data on mount
   useEffect(() => {
-    const fetchTriageQueue = async () => {
+    const fetchDashboardData = async () => {
       try {
-        const patients = await api.getPatients();
+        // Fetch Patients, Revenue, and Forecast simultaneously
+        const [patientsData, revenueData, forecastData] = await Promise.all([
+          api.getPatients(),
+          api.getRevenue(),
+          api.getForecast()
+        ]);
         
-        // Map database patient fields to the Admin UI format
-        const formattedQueue = patients.map((p: any) => {
+        // Format the patients for the Smart Queue
+        const formattedQueue = patientsData.map((p: any) => {
           const isHighRisk = p.riskLevel === 'High';
           const isMedRisk = p.riskLevel === 'Medium';
           
@@ -105,14 +111,16 @@ export default function AdminDashboard({ auditLog }: AdminDashboardProps) {
         });
 
         setLiveQueue(formattedQueue);
+        setRevenue(revenueData);
+        setForecast(forecastData);
       } catch (error) {
-        console.error("Error fetching live triage data for admin:", error);
+        console.error("Error fetching admin data:", error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchTriageQueue();
+    fetchDashboardData();
   }, []);
 
   const sortedQueue = [...liveQueue].sort((a, b) => {
@@ -120,8 +128,9 @@ export default function AdminDashboard({ auditLog }: AdminDashboardProps) {
     return priorityOrder[a.priority] - priorityOrder[b.priority];
   });
 
-  const totalClinic = revenueData.reduce((sum, d) => sum + d.clinicRevenue, 0);
-  const totalPharmacy = revenueData.reduce((sum, d) => sum + d.pharmacyRevenue, 0);
+  // Calculate dynamic totals based on live MongoDB revenue data
+  const totalClinic = revenue.reduce((sum, d) => sum + d.clinicRevenue, 0);
+  const totalPharmacy = revenue.reduce((sum, d) => sum + d.pharmacyRevenue, 0);
   const totalRevenue = totalClinic + totalPharmacy;
 
   return (
@@ -241,7 +250,8 @@ export default function AdminDashboard({ auditLog }: AdminDashboardProps) {
             </div>
           </div>
           <ResponsiveContainer width="100%" height={260}>
-            <LineChart data={forecastTrendData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+            {/* Swapped mock data for live 'forecast' state */}
+            <LineChart data={forecast} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#EAE6DF" vertical={false} />
               <XAxis
                 dataKey="week"
@@ -297,7 +307,8 @@ export default function AdminDashboard({ auditLog }: AdminDashboardProps) {
           </div>
         </div>
         <ResponsiveContainer width="100%" height={280}>
-          <AreaChart data={revenueData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+          {/* Swapped mock data for live 'revenue' state */}
+          <AreaChart data={revenue} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
             <defs>
               <linearGradient id="clinicGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#9E5B43" stopOpacity={0.3} />

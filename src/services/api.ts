@@ -88,6 +88,13 @@ export const api = {
   // Fetch all patients for the doctor's queue
   getPatients: () => apiRequest<any[]>('/patients'),
 
+  // Create a new patient
+  createPatient: (patientData: any) =>
+    apiRequest<any>('/patients', {
+      method: 'POST',
+      body: JSON.stringify(patientData),
+    }),
+
   // Fetch all prescriptions (or a specific patient's history)
   getPrescriptions: () => apiRequest<any[]>('/prescriptions'),
 
@@ -100,7 +107,26 @@ export const api = {
     // Update patient vitals or triage notes
   updatePatient: (id: string, data: any) =>
     apiRequest(`/patients/${id}`, {
-      method: 'PUT', // or 'PATCH' depending on your Express route setup
+      method: 'PUT',
       body: JSON.stringify(data),
     }),
+
+  // Upload document for a patient
+  uploadPatientDocument: (id: string, docData: any) =>
+    apiRequest(`/patients/${id}/documents`, {
+      method: 'POST',
+      body: JSON.stringify(docData),
+    }),
+
+  // Advance prescription status in the 3-step lock
+  advancePrescription: (id: string, dispensedBy?: string) =>
+    apiRequest(`/prescriptions/${id}/advance`, {
+      method: 'PATCH',
+      body: JSON.stringify({ dispensedBy }),
+    }),
+
+  // --- FINANCE FUNCTIONS ---
+  getRevenue: () => apiRequest<any[]>('/finance/revenue'),
+  getForecast: () => apiRequest<any[]>('/finance/forecast'),
+  getForecasts: () => apiRequest<any[]>('/finance/forecast'),
 };
