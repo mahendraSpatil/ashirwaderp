@@ -43,7 +43,7 @@ memoryUsers.set(demoUser.email, demoUser);
 memoryUsers.set(demoUser._id, demoUser);
 
 async function findUserByEmailSafe(email) {
-  const key = String(email).toLowerCase();
+  const key = String(email).trim().toLowerCase();
   if (memoryUsers.has(key)) return memoryUsers.get(key);
   try {
     const u = await User.findOne({ email: key });
@@ -64,11 +64,11 @@ async function findUserByIdSafe(id) {
 }
 
 function getInitials(name) {
-  const parts = name.trim().split(/\s+/);
+  const parts = String(name || '').trim().split(/\s+/);
   if (parts.length >= 2) {
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   }
-  return name.slice(0, 2).toUpperCase();
+  return String(name || '').trim().slice(0, 2).toUpperCase() || 'U';
 }
 
 function roleToTitle(role) {
@@ -100,11 +100,18 @@ router.post('/signup', async (req, res) => {
       return res.status(400).json({ error: 'All fields are required' });
     }
 
+    const cleanEmail = String(email).trim().toLowerCase();
+    const cleanFullName = String(fullName).trim();
+
+    if (!cleanEmail || !cleanFullName || !password) {
+      return res.status(400).json({ error: 'All fields are required' });
+    }
+
     const validRoles = ['Doctor', 'Nurse', 'Pharmacist', 'Admin'];
     const normalizedRole =
-      validRoles.find((r) => r.toLowerCase() === String(role).toLowerCase()) || 'Nurse';
+      validRoles.find((r) => r.toLowerCase() === String(role).trim().toLowerCase()) || 'Doctor';
 
-    const existing = await findUserByEmailSafe(email);
+    const existing = await findUserByEmailSafe(cleanEmail);
     if (existing) {
       return res.status(409).json({ error: 'An account with this email already exists' });
     }
@@ -113,27 +120,30 @@ router.post('/signup', async (req, res) => {
     const pwHash = hashPassword(password);
     try {
       user = await User.create({
-        fullName,
-        email: email.toLowerCase(),
+        fullName: cleanFullName,
+        email: cleanEmail,
         passwordHash: pwHash,
         role: normalizedRole,
-        avatarInitials: getInitials(fullName),
+        avatarInitials: getInitials(cleanFullName),
       });
     } catch (e) {
-      // DB not available — create in-memory user
+      if (e.code === 11000) {
+        return res.status(409).json({ error: 'An account with this email already exists' });
+      }
+      // DB not available or offline — create in-memory user
       user = createMemoryUser({
-        fullName,
-        email: email.toLowerCase(),
+        fullName: cleanFullName,
+        email: cleanEmail,
         passwordHash: pwHash,
         role: normalizedRole,
-        avatarInitials: getInitials(fullName),
+        avatarInitials: getInitials(cleanFullName),
       });
     }
 
     const token = signToken({ userId: user._id.toString(), role: user.role });
     res.status(201).json({ token, user: publicUser(user) });
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    res.status(400).json({ error: err.message || 'Signup failed' });
   }
 });
 
@@ -145,7 +155,8 @@ router.post('/signin', async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
-    const user = await findUserByEmailSafe(email);
+    const cleanEmail = String(email).trim().toLowerCase();
+    const user = await findUserByEmailSafe(cleanEmail);
     if (!user || !user.isActive) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
