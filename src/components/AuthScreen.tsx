@@ -177,9 +177,9 @@ export default function AuthScreen() {
       'We are committed to PCPNDT compliance, patient privacy, and clinical excellence. This platform is our promise that behind every record is a story of care we are proud to stand by.',
     ],
     stats: [
-      { label: 'Years of service', value: '20+' },
-      { label: 'Babies delivered', value: '15,000+' },
-      { label: 'Expert staff', value: '40+' },
+      { label: 'Years of experience', value: '15+' },
+      { label: 'Babies delivered', value: '1000+' },
+      { label: 'Expert staff', value: '10' },
       { label: 'Patient satisfaction', value: '98%' },
     ],
   };
