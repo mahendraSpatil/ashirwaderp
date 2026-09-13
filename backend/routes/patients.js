@@ -117,6 +117,7 @@ router.post('/:id/documents', async (req, res) => {
       name: req.body.name || 'Document.pdf',
       type: req.body.type || 'PCPNDT Record',
       hash: req.body.hash || `0x${Date.now().toString(16)}`,
+      url: req.body.url || '',
       verified: req.body.verified !== false,
       pcpndtCompliant: req.body.pcpndtCompliant !== false,
       uploadedBy: req.body.uploadedBy || 'Nurse',

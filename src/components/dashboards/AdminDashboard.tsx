@@ -36,6 +36,9 @@ import {
 } from 'lucide-react';
 import type { AuditEntry, AuditCategory, ClinicalRevenue } from '@/types';
 import { api } from '@/services/api'; // The bridge! (Mock data imports removed completely)
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 
 interface AdminDashboardProps {
   auditLog: AuditEntry[];
@@ -100,6 +103,61 @@ export default function AdminDashboard({ auditLog }: AdminDashboardProps) {
   ]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+
+  const handleExportPDF = () => {
+    const doc = new jsPDF();
+    doc.text('Clinical Revenue Registry', 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 22);
+    
+    const tableColumn = ["Date", "Patient Info", "Category", "Project", "Amount", "Payment"];
+    const tableRows: any[] = [];
+    
+    const filteredRegistry = clinicalRegistry.filter(entry => 
+      entry.patientName?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      entry.category.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    filteredRegistry.forEach(entry => {
+      const entryData = [
+        new Date(entry.date).toLocaleDateString(),
+        entry.patientName ? `${entry.patientName} (${entry.patientId})` : 'Walk-in / Anonymous',
+        entry.category,
+        entry.project,
+        entry.amount.toString(),
+        entry.paymentMethod
+      ];
+      tableRows.push(entryData);
+    });
+
+    autoTable(doc, { head: [tableColumn], body: tableRows, startY: 30 });
+    doc.save('clinical_revenue_registry.pdf');
+    setIsExportMenuOpen(false);
+  };
+
+  const handleExportExcel = () => {
+    const filteredRegistry = clinicalRegistry.filter(entry => 
+      entry.patientName?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      entry.category.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    const exportData = filteredRegistry.map(entry => ({
+      Date: new Date(entry.date).toLocaleDateString(),
+      'Patient Name': entry.patientName || 'Walk-in / Anonymous',
+      'Patient ID': entry.patientId || '',
+      Category: entry.category,
+      Project: entry.project,
+      Amount: entry.amount,
+      'Payment Method': entry.paymentMethod
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Revenue');
+    XLSX.writeFile(workbook, 'clinical_revenue_registry.xlsx');
+    setIsExportMenuOpen(false);
+  };
 
   const handleDeleteClinicalRevenue = (id: string) => {
     if (confirm('Are you sure you want to delete this revenue entry?')) {
@@ -420,10 +478,31 @@ export default function AdminDashboard({ auditLog }: AdminDashboardProps) {
             <button className="p-2 rounded-xl border border-beige-200 bg-white/70 hover:bg-beige-100 text-ink-600 transition-colors">
               <Filter className="w-4 h-4" />
             </button>
-            <button className="btn-ghost px-4 py-2 flex items-center gap-2 text-sm bg-white/80">
-              <Download className="w-4 h-4" />
-              Export
-            </button>
+            <div className="relative">
+              <button 
+                onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
+                className="btn-ghost px-4 py-2 flex items-center gap-2 text-sm bg-white/80"
+              >
+                <Download className="w-4 h-4" />
+                Export
+              </button>
+              {isExportMenuOpen && (
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-beige-200 py-2 z-10">
+                  <button
+                    onClick={handleExportPDF}
+                    className="w-full text-left px-4 py-2 text-sm text-ink-600 hover:bg-beige-50 hover:text-ink-900 transition-colors"
+                  >
+                    Export as PDF
+                  </button>
+                  <button
+                    onClick={handleExportExcel}
+                    className="w-full text-left px-4 py-2 text-sm text-ink-600 hover:bg-beige-50 hover:text-ink-900 transition-colors"
+                  >
+                    Export as Excel
+                  </button>
+                </div>
+              )}
+            </div>
             <button 
               onClick={() => setIsAddModalOpen(true)}
               className="btn-sage px-4 py-2 flex items-center gap-2 text-sm shadow-soft"

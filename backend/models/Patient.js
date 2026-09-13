@@ -23,6 +23,7 @@ const documentSchema = new mongoose.Schema(
       default: 'PCPNDT Record',
     },
     hash: { type: String, required: true },
+    url: { type: String },
     verified: { type: Boolean, default: true },
     uploadedBy: { type: mongoose.Schema.Types.Mixed, default: 'Nurse' },
     pcpndtCompliant: { type: Boolean, default: true },

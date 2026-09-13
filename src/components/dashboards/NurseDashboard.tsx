@@ -21,10 +21,12 @@ import {
   Phone,
   UserPlus,
   Plus,
+  Eye,
 } from 'lucide-react';
 import type { AuditCategory } from '@/types';
 import { generateHash } from '@/services/utils';
 import { api } from '@/services/api';
+import DocumentViewerModal from '@/components/shared/DocumentViewerModal';
 
 interface UploadedFile {
   name: string;
@@ -45,6 +47,7 @@ interface TriagePatient {
   priority: 'Emergency' | 'High Priority' | 'Routine';
   escalationReason?: string;
   status: 'waiting' | 'in_consultation' | 'completed';
+  documents?: any[];
 }
 
 interface NurseDashboardProps {
@@ -113,6 +116,8 @@ export default function NurseDashboard({ onAuditLog }: NurseDashboardProps) {
   const [hashing, setHashing] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [viewingDoc, setViewingDoc] = useState<any | null>(null);
 
   // 1. Fetch live patients on mount
   const fetchPatients = async (preserveSelection = true) => {
@@ -225,6 +230,15 @@ export default function NurseDashboard({ onAuditLog }: NurseDashboardProps) {
     }
   };
 
+  const readFileAsDataURL = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
   const handleFileUpload = (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const targetPatientId = selectedPatientId || (queue.length > 0 ? queue[0].id : '');
@@ -240,7 +254,18 @@ export default function NurseDashboard({ onAuditLog }: NurseDashboardProps) {
 
       setUploadedFiles((prev) => [...newFiles, ...prev]);
 
-      for (const f of newFiles) {
+      const fileArray = Array.from(files);
+      for (let i = 0; i < fileArray.length; i++) {
+        const file = fileArray[i];
+        const f = newFiles[i];
+        
+        let dataUrl = '';
+        try {
+          dataUrl = await readFileAsDataURL(file);
+        } catch (e) {
+          console.error("Failed to read file", e);
+        }
+
         onAuditLog(
           `PCPNDT document uploaded — ${f.name} (Merkle root: ${f.hash.slice(0, 18)}…)`,
           'Nurse Priya Menon',
@@ -253,6 +278,7 @@ export default function NurseDashboard({ onAuditLog }: NurseDashboardProps) {
               name: f.name,
               type: 'PCPNDT Record',
               hash: f.hash,
+              url: dataUrl,
               verified: true,
               pcpndtCompliant: true,
               uploadedBy: 'Nurse Priya Menon',
@@ -267,7 +293,7 @@ export default function NurseDashboard({ onAuditLog }: NurseDashboardProps) {
       if (targetPatientId) {
         fetchPatients(true);
       }
-    }, 1500);
+    }, 500); // Reduced delay slightly
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -637,7 +663,7 @@ export default function NurseDashboard({ onAuditLog }: NurseDashboardProps) {
         </div>
 
         {/* PCPNDT Document Vault */}
-        <div className="card p-8">
+        <div className="card p-8 flex flex-col">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-10 h-10 rounded-xl bg-sage-50 flex items-center justify-center">
               <Lock className="w-5 h-5 text-sage-500" strokeWidth={1.5} />
@@ -684,10 +710,58 @@ export default function NurseDashboard({ onAuditLog }: NurseDashboardProps) {
               </>
             )}
           </div>
+          
+          {/* Patient Documents */}
+          <div className="mt-6 flex-1">
+            <h3 className="label-text mb-3 flex items-center justify-between">
+              Patient Documents
+              <span className="text-xs bg-beige-100 px-2 py-0.5 rounded-full text-ink-500">
+                {(queue.find(p => p.id === selectedPatientId)?.documents || []).length} Total
+              </span>
+            </h3>
+            
+            <div className="space-y-3">
+              {(queue.find(p => p.id === selectedPatientId)?.documents || []).length === 0 ? (
+                <p className="text-sm text-ink-400">No documents found for this patient.</p>
+              ) : (
+                (queue.find(p => p.id === selectedPatientId)?.documents || []).map((doc: any) => (
+                  <div key={doc.id || doc.hash} className="bg-beige-50 rounded-xl p-4 border border-beige-200 flex flex-col">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-start gap-2">
+                        <ScanLine className="w-4 h-4 text-sage-500 mt-0.5 flex-shrink-0" strokeWidth={1.5} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-ink-900 leading-tight">{doc.name}</p>
+                          <p className="text-xs text-ink-400">{doc.type}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setViewingDoc(doc)}
+                        className="p-1.5 rounded-lg text-ink-500 hover:text-ink-900 hover:bg-beige-200 transition-colors"
+                        title="View Document"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <BadgeCheck className="w-3.5 h-3.5 text-sage-500" strokeWidth={1.5} />
+                      <span className="text-xs text-sage-500 font-medium">PCPNDT Compliant</span>
+                      <FileCheck className="w-3.5 h-3.5 text-sage-500 ml-1" strokeWidth={1.5} />
+                      <span className="text-xs text-sage-500 font-medium">Verified</span>
+                    </div>
+                    {doc.uploadedBy && (
+                      <p className="text-[10px] text-ink-400 mb-1 font-medium">Uploaded by: {doc.uploadedBy}</p>
+                    )}
+                    <p className="font-mono text-[10px] text-ink-400 break-all leading-relaxed">{doc.hash}</p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
 
+          {/* Session Uploads (Pending) */}
           {uploadedFiles.length > 0 && (
-            <div className="mt-5 space-y-3">
-              <p className="label-text">Locked & Compliant Records</p>
+            <div className="mt-5 space-y-3 pt-5 border-t border-beige-200">
+              <p className="label-text text-terracotta-500">Session Uploads</p>
               {uploadedFiles.map((file, idx) => (
                 <div key={idx} className="bg-beige-50 rounded-xl p-4 border border-beige-200 animate-fade-in">
                   <div className="flex items-start justify-between mb-2">
@@ -922,6 +996,12 @@ export default function NurseDashboard({ onAuditLog }: NurseDashboardProps) {
           </div>
         </div>
       )}
+
+      <DocumentViewerModal 
+        viewingDoc={viewingDoc} 
+        activePatient={queue.find(p => p.id === selectedPatientId)} 
+        onClose={() => setViewingDoc(null)} 
+      />
     </div>
   );
 }

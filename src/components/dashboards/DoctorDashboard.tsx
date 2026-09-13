@@ -18,9 +18,11 @@ import {
   Clock,
   CreditCard,
   FlaskConical,
+  Eye,
 } from 'lucide-react';
 import type { Patient, Prescription, PrescriptionStatus } from '@/types';
 import { api } from '@/services/api'; // Imported the bridge!
+import DocumentViewerModal from '@/components/shared/DocumentViewerModal';
 
 interface DoctorDashboardProps {
   onPrescriptionSent: (rx: Prescription) => void;
@@ -37,6 +39,7 @@ export default function DoctorDashboard({ onPrescriptionSent }: DoctorDashboardP
   const [patientList, setPatientList] = useState<any[]>([]);
   const [activePatientId, setActivePatientId] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [viewingDoc, setViewingDoc] = useState<any | null>(null);
   
   const [notes, setNotes] = useState('');
   const [medName, setMedName] = useState('');
@@ -429,9 +432,18 @@ export default function DoctorDashboard({ onPrescriptionSent }: DoctorDashboardP
                     <p className="text-xs text-ink-400">{doc.type}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-1.5 mb-2">
-                  <ShieldCheck className="w-3.5 h-3.5 text-sage-500" strokeWidth={1.5} />
-                  <span className="text-xs text-sage-500 font-medium">Verified</span>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-sage-500" strokeWidth={1.5} />
+                    <span className="text-xs text-sage-500 font-medium">Verified</span>
+                  </div>
+                  <button
+                    onClick={() => setViewingDoc(doc)}
+                    className="p-1.5 rounded-lg text-ink-500 hover:text-ink-900 hover:bg-beige-200 transition-colors"
+                    title="View Document"
+                  >
+                    <Eye className="w-4 h-4" />
+                  </button>
                 </div>
                 <p className="font-mono text-[10px] text-ink-400 break-all leading-relaxed">
                   {doc.hash}
@@ -441,6 +453,12 @@ export default function DoctorDashboard({ onPrescriptionSent }: DoctorDashboardP
           </div>
         </aside>
       </div>
+
+      <DocumentViewerModal 
+        viewingDoc={viewingDoc} 
+        activePatient={activePatient} 
+        onClose={() => setViewingDoc(null)} 
+      />
     </div>
   );
 }
