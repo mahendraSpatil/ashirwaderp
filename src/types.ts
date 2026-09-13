@@ -58,8 +58,10 @@ export interface InventoryItem {
   category: string;
   stock: number;
   unit: string;
+  rate: number;
   batchId: string;
   expiryDate: string;
+  supplier?: string;
   reorderLevel: number;
 }
 
@@ -80,10 +82,38 @@ export interface ForecastData {
   currentStock: number;
 }
 
+export type ClinicalRevenueCategory = 'Consultation' | 'IPD & Room Rent' | 'Procedure/Surgery' | 'Diagnostic Scan' | 'Lab Test';
+
+export interface ClinicalRevenue {
+  id: string;
+  date: string;
+  patientId?: string;
+  patientName?: string;
+  category: ClinicalRevenueCategory;
+  amount: number;
+  paymentMethod: 'Cash' | 'Card' | 'UPI' | 'Insurance';
+  project: string;
+}
+
+export type PharmacyRevenueCategory = 'Prescription Sales' | 'OTC Sales' | 'Consumables';
+
+export interface PharmacyRevenue {
+  id: string;
+  date: string;
+  billId: string;
+  patientId?: string;
+  items: string;
+  quantity: number;
+  amount: number;
+  paymentMethod: 'Cash' | 'Card' | 'UPI';
+  category: PharmacyRevenueCategory;
+}
+
 export interface RevenueData {
   day: string;
-  clinicRevenue: number;
-  pharmacyRevenue: number;
+  consultationRevenue: number;
+  procedureRevenue: number;
+  scanRevenue: number;
 }
 
 export interface ForecastTrendData {

@@ -72,10 +72,40 @@ export const api = {
 
   getMe: () => apiRequest<{ user: AuthUser }>('/auth/me'),
   
-  // --- NEW INVENTORY FUNCTIONS ---
+  // --- INVENTORY FUNCTIONS ---
   
   // Fetch live inventory
   getInventory: () => apiRequest<any[]>('/inventory'),
+
+  // Add new medicine and stock batch
+  addMedicine: (data: {
+    medicineName: string;
+    category?: string;
+    unit?: string;
+    rate?: number;
+    batchId: string;
+    quantity: number;
+    expiryDate: string;
+    reorderLevel?: number;
+    supplier?: string;
+  }) =>
+    apiRequest<any>('/inventory/add', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Update existing batch
+  updateBatch: (id: string, data: { quantity?: number; rate?: number; expiryDate?: string; supplier?: string }) =>
+    apiRequest<any>(`/inventory/batch/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  // Delete a batch
+  deleteBatch: (id: string) =>
+    apiRequest<any>(`/inventory/batch/${id}`, {
+      method: 'DELETE',
+    }),
 
   // Deduct stock
   deductInventory: (medicineName: string, quantity: number) =>
@@ -129,4 +159,10 @@ export const api = {
   getRevenue: () => apiRequest<any[]>('/finance/revenue'),
   getForecast: () => apiRequest<any[]>('/finance/forecast'),
   getForecasts: () => apiRequest<any[]>('/finance/forecast'),
+
+  // --- REVENUE REGISTRIES ---
+  getClinicalRevenue: () => apiRequest<any[]>('/finance/clinical-revenue'),
+  addClinicalRevenue: (data: any) => apiRequest<any>('/finance/clinical-revenue', { method: 'POST', body: JSON.stringify(data) }),
+  getPharmacyRevenue: () => apiRequest<any[]>('/finance/pharmacy-revenue'),
+  addPharmacyRevenue: (data: any) => apiRequest<any>('/finance/pharmacy-revenue', { method: 'POST', body: JSON.stringify(data) }),
 };

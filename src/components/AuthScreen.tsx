@@ -235,7 +235,6 @@ export default function AuthScreen() {
 
   const handleBack = () => {
     setMode('select');
-    setSelectedRole(null);
     setError(null);
     setEmail('');
     setPassword('');
@@ -244,8 +243,14 @@ export default function AuthScreen() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedRole) return;
     setError(null);
+
+    const targetRole = selectedRole || 'doctor';
+    if (!targetRole) {
+      setError('Please select a role.');
+      return;
+    }
+
     setSubmitting(true);
 
     if (mode === 'signin') {
@@ -255,7 +260,7 @@ export default function AuthScreen() {
         setSubmitting(false);
       }
     } else {
-      const { error: signUpError } = await signUp(email, password, fullName, selectedRole);
+      const { error: signUpError } = await signUp(email, password, fullName, targetRole);
       if (signUpError) {
         setError(signUpError);
         setSubmitting(false);
@@ -263,7 +268,7 @@ export default function AuthScreen() {
     }
   };
 
-  const activeRoleCard = roleCards.find((r) => r.role === selectedRole);
+  const activeRoleCard = roleCards.find((r) => r.role === (selectedRole || (mode === 'signup' ? 'doctor' : null)));
 
   // LANDING MODE — full marketing page
   if (mode === 'landing') {
@@ -752,8 +757,9 @@ export default function AuthScreen() {
               New to Ashirwad ERP?{' '}
               <button
                 onClick={() => {
-                  setSelectedRole(null);
+                  setSelectedRole('doctor');
                   setMode('signup');
+                  setError(null);
                 }}
                 className="text-terracotta-500 font-medium hover:underline"
               >
@@ -798,20 +804,52 @@ export default function AuthScreen() {
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 {mode === 'signup' && (
-                  <div>
-                    <label className="label-text block mb-1.5">Full Name</label>
-                    <div className="relative">
-                      <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-400" strokeWidth={1.5} />
-                      <input
-                        type="text"
-                        value={fullName}
-                        onChange={(e) => setFullName(e.target.value)}
-                        className="input-field pl-10"
-                        placeholder="Dr. Ananya Iyer"
-                        required
-                      />
+                  <>
+                    <div>
+                      <label className="label-text block mb-1.5">Select Role</label>
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        {roleCards.map((rc) => {
+                          const isSelected = (selectedRole || 'doctor') === rc.role;
+                          const RcIcon = rc.icon;
+                          return (
+                            <button
+                              type="button"
+                              key={rc.role}
+                              onClick={() => setSelectedRole(rc.role)}
+                              className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-left transition-all ${
+                                isSelected
+                                  ? 'bg-terracotta-50/80 border-terracotta-400 text-terracotta-800 shadow-sm ring-1 ring-terracotta-300'
+                                  : 'bg-white/50 border-beige-200 hover:border-beige-300 text-ink-600'
+                              }`}
+                            >
+                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isSelected ? 'bg-terracotta-500 text-white' : 'bg-beige-100 text-ink-500'}`}>
+                                <RcIcon className="w-4 h-4" strokeWidth={1.5} />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-xs font-semibold truncate leading-tight">{rc.title}</div>
+                                <div className="text-[10px] text-ink-400 truncate leading-tight">{rc.subtitle.split(' ')[0]}</div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
+
+                    <div>
+                      <label className="label-text block mb-1.5">Full Name</label>
+                      <div className="relative">
+                        <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-400" strokeWidth={1.5} />
+                        <input
+                          type="text"
+                          value={fullName}
+                          onChange={(e) => setFullName(e.target.value)}
+                          className="input-field pl-10"
+                          placeholder="Dr. Ananya Iyer"
+                          required
+                        />
+                      </div>
+                    </div>
+                  </>
                 )}
 
                 <div>
@@ -877,6 +915,7 @@ export default function AuthScreen() {
                     Don't have an account?{' '}
                     <button
                       onClick={() => {
+                        setSelectedRole(selectedRole || 'doctor');
                         setMode('signup');
                         setError(null);
                       }}
@@ -890,7 +929,7 @@ export default function AuthScreen() {
                     Already have an account?{' '}
                     <button
                       onClick={() => {
-                        setMode(activeRoleCard ? 'signin' : 'select');
+                        setMode('signin');
                         setError(null);
                       }}
                       className="text-terracotta-500 font-medium hover:underline"

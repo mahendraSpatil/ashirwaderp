@@ -26,8 +26,15 @@ import {
   CreditCard,
   Terminal,
   CircleDot,
+  Plus,
+  Download,
+  Filter,
+  Search,
+  CheckCircle2,
+  Calendar,
+  Trash2,
 } from 'lucide-react';
-import type { AuditEntry, AuditCategory } from '@/types';
+import type { AuditEntry, AuditCategory, ClinicalRevenue } from '@/types';
 import { api } from '@/services/api'; // The bridge! (Mock data imports removed completely)
 
 interface AdminDashboardProps {
@@ -84,6 +91,22 @@ export default function AdminDashboard({ auditLog }: AdminDashboardProps) {
   const [forecast, setForecast] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Clinical Registry States
+  const [clinicalRegistry, setClinicalRegistry] = useState<ClinicalRevenue[]>([
+    { id: 'CR-001', date: new Date().toISOString(), patientId: 'UPID-1024', patientName: 'Aarti Sharma', category: 'Consultation', amount: 800, paymentMethod: 'UPI', project: 'OPD' },
+    { id: 'CR-002', date: new Date().toISOString(), patientId: 'UPID-1025', patientName: 'Priya Patel', category: 'Procedure/Surgery', amount: 15000, paymentMethod: 'Card', project: 'Maternity' },
+    { id: 'CR-003', date: new Date(Date.now() - 86400000).toISOString(), patientId: 'UPID-1010', patientName: 'Sneha Rao', category: 'IPD & Room Rent', amount: 4500, paymentMethod: 'Cash', project: 'General Ward' },
+    { id: 'CR-004', date: new Date(Date.now() - 86400000).toISOString(), category: 'Diagnostic Scan', amount: 1200, paymentMethod: 'UPI', project: 'Radiology' },
+  ]);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const handleDeleteClinicalRevenue = (id: string) => {
+    if (confirm('Are you sure you want to delete this revenue entry?')) {
+      setClinicalRegistry(prev => prev.filter(entry => entry.id !== id));
+    }
+  };
+
   // Fetch all dashboard data on mount
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -111,7 +134,12 @@ export default function AdminDashboard({ auditLog }: AdminDashboardProps) {
         });
 
         setLiveQueue(formattedQueue);
-        setRevenue(revenueData);
+        // Map old clinicRevenue into mock split categories for the updated chart
+        setRevenue(revenueData.map((r: any) => ({
+          day: r.day,
+          consultationRevenue: r.clinicRevenue * 0.6,
+          procedureRevenue: r.clinicRevenue * 0.4
+        })));
         setForecast(forecastData);
       } catch (error) {
         console.error("Error fetching admin data:", error);
@@ -129,9 +157,10 @@ export default function AdminDashboard({ auditLog }: AdminDashboardProps) {
   });
 
   // Calculate dynamic totals based on live MongoDB revenue data
-  const totalClinic = revenue.reduce((sum, d) => sum + d.clinicRevenue, 0);
-  const totalPharmacy = revenue.reduce((sum, d) => sum + d.pharmacyRevenue, 0);
-  const totalRevenue = totalClinic + totalPharmacy;
+  const totalClinic = revenue.reduce((sum, d) => sum + (d.consultationRevenue || 0) + (d.procedureRevenue || 0), 0);
+  const totalConsultations = revenue.reduce((sum, d) => sum + (d.consultationRevenue || 0), 0);
+  const totalProcedures = revenue.reduce((sum, d) => sum + (d.procedureRevenue || 0), 0);
+  const totalRevenue = totalClinic; // Pharmacy is no longer tracked here
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
@@ -165,15 +194,15 @@ export default function AdminDashboard({ auditLog }: AdminDashboardProps) {
         </div>
         <div className="card p-6">
           <div className="flex items-center justify-between mb-2">
-            <p className="label-text">Pharmacy Revenue</p>
-            <div className="w-9 h-9 rounded-xl bg-terracotta-50 flex items-center justify-center">
-              <Pill className="w-4 h-4 text-terracotta-500" strokeWidth={1.5} />
+            <p className="label-text">Pending Dues</p>
+            <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center">
+              <Clock className="w-4 h-4 text-amber-500" strokeWidth={1.5} />
             </div>
           </div>
           <p className="font-serif text-3xl text-ink-900">
-            ₹{(totalPharmacy / 1000).toFixed(1)}K
+            ₹12.4K
           </p>
-          <p className="text-xs text-ink-400 mt-1">Dispensed medications</p>
+          <p className="text-xs text-ink-400 mt-1">From IPD admissions</p>
         </div>
       </div>
 
@@ -302,8 +331,8 @@ export default function AdminDashboard({ auditLog }: AdminDashboardProps) {
             <TrendingUp className="w-4 h-4 text-terracotta-500" strokeWidth={1.5} />
           </div>
           <div>
-            <h3 className="font-serif text-xl text-ink-900">Revenue Dashboard</h3>
-            <p className="text-xs text-ink-400">Clinic revenue vs. pharmacy revenue (₹)</p>
+            <h3 className="font-serif text-xl text-ink-900">Clinical Revenue by Category</h3>
+            <p className="text-xs text-ink-400">Consultations vs. Procedures (₹)</p>
           </div>
         </div>
         <ResponsiveContainer width="100%" height={280}>
@@ -345,25 +374,192 @@ export default function AdminDashboard({ auditLog }: AdminDashboardProps) {
             <Legend wrapperStyle={{ fontSize: '0.75rem', paddingTop: '8px' }} iconType="circle" />
             <Area
               type="monotone"
-              dataKey="clinicRevenue"
+              dataKey="consultationRevenue"
               stroke="#9E5B43"
               strokeWidth={2.5}
               fill="url(#clinicGrad)"
-              name="Clinic Revenue"
+              name="Consultations"
               dot={{ fill: '#9E5B43', r: 4 }}
             />
             <Area
               type="monotone"
-              dataKey="pharmacyRevenue"
+              dataKey="procedureRevenue"
               stroke="#547A5F"
               strokeWidth={2.5}
               fill="url(#pharmacyGrad)"
-              name="Pharmacy Revenue"
+              name="Procedures"
               dot={{ fill: '#547A5F', r: 4 }}
             />
           </AreaChart>
         </ResponsiveContainer>
       </div>
+
+      {/* Clinical Revenue Registry */}
+      <div className="card p-6 border-2 border-sage-100 bg-gradient-to-br from-white to-sage-50/30">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-sage-50 flex items-center justify-center shadow-soft">
+              <CreditCard className="w-5 h-5 text-sage-600" strokeWidth={1.5} />
+            </div>
+            <div>
+              <h3 className="font-serif text-2xl text-ink-900">Clinical Revenue Registry</h3>
+              <p className="text-xs text-ink-400">Date-wise registry of all clinical collections</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-400" />
+              <input
+                type="text"
+                placeholder="Search patient or bill..."
+                className="input-field pl-9 py-2 text-sm w-48 bg-white/80"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <button className="p-2 rounded-xl border border-beige-200 bg-white/70 hover:bg-beige-100 text-ink-600 transition-colors">
+              <Filter className="w-4 h-4" />
+            </button>
+            <button className="btn-ghost px-4 py-2 flex items-center gap-2 text-sm bg-white/80">
+              <Download className="w-4 h-4" />
+              Export
+            </button>
+            <button 
+              onClick={() => setIsAddModalOpen(true)}
+              className="btn-sage px-4 py-2 flex items-center gap-2 text-sm shadow-soft"
+            >
+              <Plus className="w-4 h-4" />
+              Add Revenue Entry
+            </button>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto rounded-2xl border border-beige-200 bg-white/80">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-beige-200 bg-beige-50/50">
+                <th className="text-left py-3 px-4 label-text font-medium">Date</th>
+                <th className="text-left py-3 px-4 label-text font-medium">Patient Info</th>
+                <th className="text-left py-3 px-4 label-text font-medium">Category</th>
+                <th className="text-left py-3 px-4 label-text font-medium">Project</th>
+                <th className="text-right py-3 px-4 label-text font-medium">Amount</th>
+                <th className="text-right py-3 px-4 label-text font-medium">Payment</th>
+                <th className="text-center py-3 px-4 label-text font-medium">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-beige-100">
+              {clinicalRegistry
+                .filter(entry => entry.patientName?.toLowerCase().includes(searchTerm.toLowerCase()) || entry.category.toLowerCase().includes(searchTerm.toLowerCase()))
+                .map((entry) => (
+                <tr key={entry.id} className="hover:bg-beige-50/50 transition-colors">
+                  <td className="py-3 px-4">
+                    <div className="flex items-center gap-1.5 text-ink-600">
+                      <Calendar className="w-3.5 h-3.5" />
+                      {new Date(entry.date).toLocaleDateString()}
+                    </div>
+                  </td>
+                  <td className="py-3 px-4">
+                    {entry.patientName ? (
+                      <div>
+                        <p className="font-medium text-ink-900">{entry.patientName}</p>
+                        <p className="text-[11px] text-ink-400 font-mono">{entry.patientId}</p>
+                      </div>
+                    ) : (
+                      <span className="text-ink-400 italic text-xs">Walk-in / Anonymous</span>
+                    )}
+                  </td>
+                  <td className="py-3 px-4">
+                    <span className="inline-block px-2 py-0.5 rounded-md text-xs bg-beige-100 text-ink-600 border border-beige-200">
+                      {entry.category}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 text-ink-600 text-sm">
+                    {entry.project}
+                  </td>
+                  <td className="py-3 px-4 text-right font-medium text-ink-900">
+                    ₹{entry.amount.toLocaleString('en-IN')}
+                  </td>
+                  <td className="py-3 px-4 text-right">
+                    <span className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-medium border ${
+                      entry.paymentMethod === 'UPI' ? 'bg-purple-50 text-purple-600 border-purple-100' :
+                      entry.paymentMethod === 'Card' ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                      'bg-sage-50 text-sage-600 border-sage-100'
+                    }`}>
+                      {entry.paymentMethod}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 text-center">
+                    <button
+                      onClick={() => handleDeleteClinicalRevenue(entry.id)}
+                      title="Delete Entry"
+                      className="p-1.5 rounded-lg text-ink-400 hover:text-red-500 hover:bg-red-50 transition-colors inline-block"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Add Revenue Modal */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/40 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-lg bg-white rounded-3xl p-7 shadow-2xl border border-beige-200">
+            <h3 className="font-serif text-2xl text-ink-900 mb-5">Record Clinical Revenue</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="label-text mb-1 block">Category</label>
+                <select className="input-field bg-white">
+                  <option>Consultation</option>
+                  <option>Procedure/Surgery</option>
+                  <option>IPD & Room Rent</option>
+                  <option>Diagnostic Scan</option>
+                  <option>Lab Test</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="label-text mb-1 block">Amount (₹)</label>
+                  <input type="number" className="input-field" placeholder="e.g. 1500" />
+                </div>
+                <div>
+                  <label className="label-text mb-1 block">Payment Method</label>
+                  <select className="input-field bg-white">
+                    <option>UPI</option>
+                    <option>Cash</option>
+                    <option>Card</option>
+                    <option>Insurance</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="label-text mb-1 block">Patient Name (Optional)</label>
+                  <input type="text" className="input-field" placeholder="Patient Name" />
+                </div>
+                <div>
+                  <label className="label-text mb-1 block">Project / Dept</label>
+                  <select className="input-field bg-white">
+                    <option>OPD</option>
+                    <option>Maternity</option>
+                    <option>General Ward</option>
+                    <option>Radiology</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-beige-100">
+              <button onClick={() => setIsAddModalOpen(false)} className="btn-ghost px-5 py-2">Cancel</button>
+              <button onClick={() => setIsAddModalOpen(false)} className="btn-sage px-5 py-2 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4" /> Save Entry
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Blockchain Audit Log — Dark Terminal */}
       <div className="rounded-2xl overflow-hidden shadow-soft-lg" style={{ background: '#1A1714' }}>
